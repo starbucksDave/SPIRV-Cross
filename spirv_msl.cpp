@@ -9784,6 +9784,8 @@ string CompilerMSL::argument_decl(const SPIRFunction::Parameter &arg)
 		decl += type_to_glsl(type, arg.id);
 
 	bool opaque_handle = storage == StorageClassUniformConstant;
+	if (arg.alias_global_variable)
+		opaque_handle = false;
 
 	if (!builtin && !opaque_handle && !is_pointer &&
 	    (storage == StorageClassFunction || storage == StorageClassGeneric))
