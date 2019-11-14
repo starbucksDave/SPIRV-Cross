@@ -9784,8 +9784,6 @@ string CompilerMSL::argument_decl(const SPIRFunction::Parameter &arg)
 		decl += type_to_glsl(type, arg.id);
 
 	bool opaque_handle = storage == StorageClassUniformConstant;
-	if (arg.alias_global_variable)
-		opaque_handle = false;
 
 	if (!builtin && !opaque_handle && !is_pointer &&
 	    (storage == StorageClassFunction || storage == StorageClassGeneric))
@@ -9837,6 +9835,38 @@ string CompilerMSL::argument_decl(const SPIRFunction::Parameter &arg)
 		decl += to_expression(name_id);
 		decl += ")";
 		decl += type_to_array_glsl(type);
+	}
+	else if (is_array(type) && type_is_image)
+	{
+		if (msl_options.argument_buffers)
+		{
+			uint32_t desc_set = get_decoration(name_id, DecorationDescriptorSet);
+			if (type_is_image &&
+				descriptor_set_is_argument_buffer(desc_set))
+			{
+				if (argument_buffer_device_storage_mask & (1u << desc_set))
+				{
+					if(constref)
+						address_space = "device";
+					else
+						address_space = "const device";
+				}
+			}
+		}
+
+		// If this is going to be a reference to a variable pointer, the address space
+		// for the reference has to go before the '&', but after the '*'.
+		if (!address_space.empty())
+		{
+			if (decl.back() == '*')
+				decl += join(" ", address_space, " ");
+			else
+				decl = join(address_space, " ", decl);
+		}
+		decl += "&";
+		decl += " ";
+		decl += to_restrict(name_id);
+		decl += to_expression(name_id);
 	}
 	else if (!opaque_handle)
 	{
@@ -12175,7 +12205,7 @@ void CompilerMSL::analyze_argument_buffers()
 	ir.for_each_typed_id<SPIRVariable>([&](uint32_t self, SPIRVariable &var) {
 		if ((var.storage == StorageClassUniform || var.storage == StorageClassUniformConstant ||
 		     var.storage == StorageClassStorageBuffer) &&
-		    !is_hidden_variable(var))
+		     !(is_builtin_variable(var) || var.remapped_variable))
 		{
 			uint32_t desc_set = get_decoration(self, DecorationDescriptorSet);
 			// Ignore if it's part of a push descriptor set.
